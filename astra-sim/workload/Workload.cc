@@ -839,6 +839,9 @@ void Workload::iterate_hybrid_parallel_Transformer() {
 void Workload::iterate_hybrid_parallel_Transformer_fwd_in_bckwd() {
   assert(index >= 0);
   assert(index < SIZE);
+  if (index >= SIZE) {
+    std::cout << "Assertion `index < SIZE' failed." << std::endl;
+  }
   check_for_sim_end();
   if (current_state == LoopState::Forward_Pass) {
     if (!layers[index]->is_weight_grad_comm_finished_blocking()) {
@@ -1324,6 +1327,37 @@ bool Workload::initialize_workload(std::string name) {
 
     Tick fp_compute_time;
     inFile >> fp_compute_time;
+
+    int loc;
+    uint64_t M, K, N, num_ops, mat_size;
+    double oi;
+
+    Tick fp_compute_time_roofline;
+    inFile >> loc;
+    inFile >> M;
+    inFile >> K;
+    inFile >> N;
+    num_ops = 2*M*K*N;
+    mat_size =
+      (generator->data_type_size*M*K
+        + generator->data_type_size*K*N
+        + generator->data_type_size*M*N);
+    oi = static_cast<double>(num_ops) / static_cast<double>(mat_size);
+
+    if (generator->roofline_enabled) {
+      if (loc == 0) { // local
+          fp_compute_time_roofline =
+          static_cast<Tick>(
+                  (static_cast<float>(num_ops)
+                   / static_cast<float>(generator->local_mem_roofline->get_perf(oi))) );
+      } else { // remote
+        fp_compute_time_roofline =
+          static_cast<Tick>(
+              (static_cast<float>(num_ops)
+               / static_cast<float>(generator->remote_mem_roofline->get_perf(oi))) );
+      }
+    }
+
     std::string fp_comm_type_s;
     inFile >> fp_comm_type_s;
     uint64_t fp_comm_size;
@@ -1331,6 +1365,32 @@ bool Workload::initialize_workload(std::string name) {
 
     Tick ig_compute_time;
     inFile >> ig_compute_time;
+
+    Tick ig_compute_time_roofline;
+    inFile >> loc;
+    inFile >> M;
+    inFile >> K;
+    inFile >> N;
+    num_ops = 2*M*K*N;
+    mat_size =
+      (generator->data_type_size*M*K
+        + generator->data_type_size*K*N
+        + generator->data_type_size*M*N);
+    oi = static_cast<double>(num_ops) / static_cast<double>(mat_size);
+    if (generator->roofline_enabled) {
+      if (loc == 0) { // local
+        ig_compute_time_roofline =
+          static_cast<Tick>(
+              (static_cast<float>(num_ops)
+               / static_cast<float>(generator->local_mem_roofline->get_perf(oi))));
+      } else { // remote
+        ig_compute_time_roofline =
+          static_cast<Tick>(
+              (static_cast<float>(num_ops)
+               / static_cast<float>(generator->remote_mem_roofline->get_perf(oi))));
+      }
+    }
+
     std::string ig_comm_type_s;
     inFile >> ig_comm_type_s;
     uint64_t ig_comm_size;
@@ -1338,6 +1398,32 @@ bool Workload::initialize_workload(std::string name) {
 
     Tick wg_compute_time;
     inFile >> wg_compute_time;
+
+    Tick wg_compute_time_roofline;
+    inFile >> loc;
+    inFile >> M;
+    inFile >> K;
+    inFile >> N;
+    num_ops = 2*M*K*N;
+    mat_size =
+      (generator->data_type_size*M*K
+        + generator->data_type_size*K*N
+        + generator->data_type_size*M*N);
+    oi = static_cast<double>(num_ops) / static_cast<double>(mat_size);
+    if (generator->roofline_enabled) {
+      if (loc == 0) { // local
+          wg_compute_time_roofline =
+            static_cast<Tick>(
+                (static_cast<float>(num_ops)
+                 / static_cast<float>(generator->local_mem_roofline->get_perf(oi))));
+      } else { // remote
+        wg_compute_time_roofline =
+          static_cast<Tick>(
+              (static_cast<float>(num_ops)
+               / static_cast<float>(generator->remote_mem_roofline->get_perf(oi))));
+      }
+    }
+
     std::string wg_comm_type_s;
     inFile >> wg_comm_type_s;
     uint64_t wg_comm_size;
@@ -1408,25 +1494,49 @@ bool Workload::initialize_workload(std::string name) {
     } else {
       selected_involved_dimensions = general_involved_dimensions;
     }
-    Layer* l = new Layer(
-        id,
-        i,
-        generator,
-        this,
-        fp_compute_time * generator->compute_scale,
-        fp_type,
-        fp_comm_size * generator->comm_scale,
-        selected_involved_dimensions["fwd"],
-        ig_compute_time * generator->compute_scale,
-        ig_type,
-        ig_comm_size * generator->comm_scale,
-        selected_involved_dimensions["ig"],
-        wg_compute_time * generator->compute_scale,
-        wg_type,
-        wg_comm_size * generator->comm_scale,
-        selected_involved_dimensions["wg"],
-        wg_update_time,
-        specific_policy);
+
+    Layer* l;
+    if (!generator->roofline_enabled) {
+      l = new Layer(
+          id,
+          i,
+          generator,
+          this,
+          fp_compute_time * generator->compute_scale,
+          fp_type,
+          fp_comm_size * generator->comm_scale,
+          selected_involved_dimensions["fwd"],
+          ig_compute_time * generator->compute_scale,
+          ig_type,
+          ig_comm_size * generator->comm_scale,
+          selected_involved_dimensions["ig"],
+          wg_compute_time * generator->compute_scale,
+          wg_type,
+          wg_comm_size * generator->comm_scale,
+          selected_involved_dimensions["wg"],
+          wg_update_time,
+          specific_policy);
+    } else {
+      l = new Layer(
+          id,
+          i,
+          generator,
+          this,
+          fp_compute_time_roofline * generator->compute_scale,
+          fp_type,
+          fp_comm_size * generator->comm_scale,
+          selected_involved_dimensions["fwd"],
+          ig_compute_time_roofline * generator->compute_scale,
+          ig_type,
+          ig_comm_size * generator->comm_scale,
+          selected_involved_dimensions["ig"],
+          wg_compute_time_roofline * generator->compute_scale,
+          wg_type,
+          wg_comm_size * generator->comm_scale,
+          selected_involved_dimensions["wg"],
+          wg_update_time,
+          specific_policy);
+    }
     if (chekpoints.find(i) != chekpoints.end()) {
       l->is_checkpoint = true;
     }
