@@ -1425,7 +1425,7 @@ int Sys::rendezvous_sim_send(
   RendezvousSendData* rsd = new RendezvousSendData(
       id, this, buffer, count, type, dst, tag, *request, msg_handler, fun_arg);
   sim_request newReq = *request;
-  uint64_t rendevouz_size = 8192;
+  uint64_t rendevouz_size = 4096;
   newReq.dstRank = request->srcRank;
   newReq.srcRank = request->dstRank;
   newReq.reqCount = rendevouz_size;
@@ -1457,7 +1457,7 @@ int Sys::rendezvous_sim_recv(
   RendezvousRecvData* rrd = new RendezvousRecvData(
       id, this, buffer, count, type, src, tag, *request, msg_handler, fun_arg);
   sim_request newReq = *request;
-  uint64_t rendevouz_size = 8192;
+  uint64_t rendevouz_size = 4096;
   newReq.dstRank = request->srcRank;
   newReq.srcRank = request->dstRank;
   newReq.reqCount = rendevouz_size;
